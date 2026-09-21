@@ -1,0 +1,6 @@
+{
+  "name": "Voice to Text",
+  "description": "Voice assistant with Gemini AI, TTS read-aloud, local 'Hey Mimi' wake-word detection, background listening service, and 3-sample personalized voice profile verification.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
