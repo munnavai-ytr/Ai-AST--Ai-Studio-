@@ -122,4 +122,81 @@ class ExampleUnitTest {
         WakeWordStateManager.setServiceRunning(false)
         assertFalse(WakeWordStateManager.isServiceRunning.value)
     }
+
+    @Test
+    fun testParseGeminiOpenCommand() {
+        val json = """{"action": "open", "app": "youtube"}"""
+        val command = com.example.service.AssistantActionManager.parseCommand(json)
+        assertNotNull(command)
+        assertEquals("open", command?.action)
+        assertEquals("youtube", command?.app)
+    }
+
+    @Test
+    fun testParseGeminiClickCommand() {
+        val json = """{"action": "click", "text": "Search"}"""
+        val command = com.example.service.AssistantActionManager.parseCommand(json)
+        assertNotNull(command)
+        assertEquals("click", command?.action)
+        assertEquals("Search", command?.text)
+    }
+
+    @Test
+    fun testParseGeminiEmbeddedCodeBlockCommand() {
+        val rawResponse = """
+            Sure, I will open YouTube for you right away!
+            ```json
+            {"action": "open", "app": "youtube"}
+            ```
+        """.trimIndent()
+        val command = com.example.service.AssistantActionManager.parseCommand(rawResponse)
+        assertNotNull(command)
+        assertEquals("open", command?.action)
+        assertEquals("youtube", command?.app)
+    }
+
+    @Test
+    fun testParseGeminiGlobalNavigationCommands() {
+        val homeCommand = com.example.service.AssistantActionManager.parseCommand("""{"action": "home"}""")
+        assertNotNull(homeCommand)
+        assertEquals("home", homeCommand?.action)
+
+        val backCommand = com.example.service.AssistantActionManager.parseCommand("""{"action": "back"}""")
+        assertNotNull(backCommand)
+        assertEquals("back", backCommand?.action)
+    }
+
+    @Test
+    fun testParseGeminiOpenSettingsCommand() {
+        val json = """{"action": "open_settings", "setting": "wifi"}"""
+        val command = com.example.service.AssistantActionManager.parseCommand(json)
+        assertNotNull(command)
+        assertEquals("open_settings", command?.action)
+        assertEquals("wifi", command?.setting)
+    }
+
+    @Test
+    fun testParseGeminiFlashlightCommand() {
+        val json = """{"action": "flashlight", "state": "on"}"""
+        val command = com.example.service.AssistantActionManager.parseCommand(json)
+        assertNotNull(command)
+        assertEquals("flashlight", command?.action)
+        assertEquals("on", command?.state)
+    }
+
+    @Test
+    fun testParseGeminiPlayYouTubeCommand() {
+        val json = """{"action": "play_youtube", "query": "relaxing lofi"}"""
+        val command = com.example.service.AssistantActionManager.parseCommand(json)
+        assertNotNull(command)
+        assertEquals("play_youtube", command?.action)
+        assertEquals("relaxing lofi", command?.query)
+    }
+
+    @Test
+    fun testParseNonActionTextReturnsNull() {
+        val normalText = "The capital of France is Paris. How else can I help?"
+        val command = com.example.service.AssistantActionManager.parseCommand(normalText)
+        org.junit.Assert.assertNull(command)
+    }
 }

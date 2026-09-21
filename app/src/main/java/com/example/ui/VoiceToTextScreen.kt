@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.model.SpeechLanguage
+import com.example.ui.components.AccessibilityCard
 import com.example.ui.components.GeminiResponseCard
 import com.example.ui.components.GlowingMicButton
 import com.example.ui.components.HistorySheet
@@ -100,6 +101,10 @@ fun VoiceToTextScreen(
     var showHistorySheet by remember { mutableStateOf(false) }
     var showProfileSetupScreen by remember { mutableStateOf(false) }
     var permissionDeniedExplanation by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.checkAccessibilityStatus()
+    }
 
     if (showProfileSetupScreen) {
         VoiceProfileSetupScreen(
@@ -633,6 +638,18 @@ fun VoiceToTextScreen(
                 language = uiState.selectedLanguage,
                 onSpeak = { viewModel.speakTts() },
                 onStopSpeak = { viewModel.stopSpeakingTts() },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Accessibility UI Automation Card
+            AccessibilityCard(
+                isServiceConnected = uiState.isAccessibilityConnected,
+                lastCommand = uiState.lastActionCommand,
+                lastResult = uiState.lastActionResult,
+                onOpenSettings = { viewModel.openAccessibilitySettings() },
+                onExecuteJson = { json -> viewModel.executeGeminiJsonCommand(json) },
                 modifier = Modifier.fillMaxWidth()
             )
 

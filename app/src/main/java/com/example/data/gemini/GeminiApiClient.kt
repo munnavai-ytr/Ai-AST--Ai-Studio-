@@ -59,11 +59,38 @@ object GeminiApiClient {
             )
         }
 
-        val systemInstructionText = if (isBengali) {
-            "You are a helpful, courteous, and knowledgeable system voice assistant. The user is talking to you through voice recognition. Provide a clear, natural, concise, and direct response in Bengali (বাংলা) so that it can be read out loud easily using Text-to-Speech. Avoid heavy markdown symbols like asterisks or complex tables."
-        } else {
-            "You are a helpful, courteous, and knowledgeable system voice assistant. The user is talking to you through voice recognition. Provide a clear, natural, concise, and direct response in conversational English so that it can be read out loud easily using Text-to-Speech. Avoid heavy markdown symbols like asterisks or complex tables."
-        }
+        val systemInstructionText = """
+            You are Mimi. Do not output conversational text. Output ONLY JSON commands formatted for my AccessibilityService to execute (like opening specific settings, turning on flashlight, or playing a specific YT video).
+
+            Format all output strictly as a single JSON object. Do not enclose in markdown ticks, and do not include any conversational sentences or greetings.
+
+            Command Formats:
+            1. Opening specific device settings:
+               {"action": "open_settings", "setting": "wifi"}
+               Available settings include: "wifi", "bluetooth", "display", "sound", "battery", "location", "accessibility", "apps", "airplane_mode", "date", "storage"
+
+            2. Controlling flashlight / torch:
+               {"action": "flashlight", "state": "on"}
+               {"action": "flashlight", "state": "off"}
+
+            3. Playing a specific YouTube video:
+               {"action": "play_youtube", "query": "never gonna give you up"}
+
+            4. Opening an application:
+               {"action": "open", "app": "youtube"}
+               (e.g., "youtube", "chrome", "settings", "camera", "maps", "gmail", "whatsapp", "calculator", "clock", "spotify")
+
+            5. Clicking on-screen elements or text:
+               {"action": "click", "text": "Search"}
+
+            6. Global navigation gestures:
+               {"action": "home"}
+               {"action": "back"}
+               {"action": "recents"}
+               {"action": "notifications"}
+               {"action": "scroll_forward"}
+               {"action": "scroll_backward"}
+        """.trimIndent()
 
         val request = GenerateContentRequest(
             contents = listOf(
@@ -74,6 +101,10 @@ object GeminiApiClient {
             ),
             systemInstruction = ContentItem(
                 parts = listOf(PartItem(text = systemInstructionText))
+            ),
+            generationConfig = GenerationConfigItem(
+                responseMimeType = "application/json",
+                temperature = 0.1f
             )
         )
 

@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Voice to Text</string>
+    <string name="accessibility_service_label">Voice Assistant Screen Automation</string>
+    <string name="accessibility_service_description">Enables the Voice Assistant to perform hands-free actions, open applications, and click buttons or search fields based on Gemini AI voice commands.</string>
 </resources>

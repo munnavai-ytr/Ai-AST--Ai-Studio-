@@ -43,7 +43,12 @@ data class SpeechUiState(
     val isBackgroundServiceActive: Boolean = false,
     val serviceStatusMessage: String = "Background listener inactive",
     val voiceProfile: com.example.voice.VoiceProfile = com.example.voice.VoiceProfile(),
-    val lastWakeMatch: com.example.voice.VoiceMatchResult? = null
+    val lastWakeMatch: com.example.voice.VoiceMatchResult? = null,
+
+    // Accessibility Service & Action State
+    val isAccessibilityConnected: Boolean = false,
+    val lastActionCommand: com.example.service.AssistantActionCommand? = null,
+    val lastActionResult: com.example.service.AssistantActionResult? = null
 )
 
 class VoiceToTextViewModel(application: Application) : AndroidViewModel(application) {
@@ -129,6 +134,20 @@ class VoiceToTextViewModel(application: Application) : AndroidViewModel(applicat
                             )
                         }
                     }
+                }
+            }
+        }
+
+        // Observe Accessibility Service state
+        viewModelScope.launch {
+            com.example.service.VoiceAssistantAccessibilityService.isServiceConnected.collect { isConnected ->
+                _uiState.update { it.copy(isAccessibilityConnected = isConnected) }
+            }
+        }
+        viewModelScope.launch {
+            com.example.service.VoiceAssistantAccessibilityService.lastActionResult.collect { actionResult ->
+                if (actionResult != null) {
+                    _uiState.update { it.copy(lastActionResult = actionResult) }
                 }
             }
         }
@@ -286,15 +305,31 @@ class VoiceToTextViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch(Dispatchers.IO) {
             val result = GeminiApiClient.askAssistant(targetText, isBengali = isBn)
             result.onSuccess { reply ->
+                // Check if reply contains an automation command from Gemini
+                val actionCommand = com.example.service.AssistantActionManager.parseCommand(reply)
+                val actionResult = if (actionCommand != null) {
+                    com.example.service.AssistantActionManager.executeCommand(context, actionCommand)
+                } else {
+                    null
+                }
+
+                val speechText = cleanConversationalSpeech(reply).ifBlank {
+                    actionResult?.message ?: if (actionCommand != null) "Executing ${actionCommand.action}" else ""
+                }
+
                 _uiState.update {
                     it.copy(
                         assistantStatus = AssistantStatus.IDLE,
                         geminiResponse = reply,
-                        statusText = if (isBn) "সহকারী উত্তর তৈরি করেছে" else "Assistant responded"
+                        lastActionCommand = actionCommand,
+                        lastActionResult = actionResult,
+                        statusText = actionResult?.message ?: if (isBn) "সহকারী উত্তর তৈরি করেছে" else "Assistant responded"
                     )
                 }
                 // Speak out loud automatically using Android's Text-to-Speech (TTS)
-                speakTts(reply)
+                if (speechText.isNotBlank()) {
+                    speakTts(speechText)
+                }
             }.onFailure { err ->
                 _uiState.update {
                     it.copy(
@@ -305,6 +340,44 @@ class VoiceToTextViewModel(application: Application) : AndroidViewModel(applicat
                 }
             }
         }
+    }
+
+    /**
+     * Receives and executes a specific JSON command from Gemini (or UI tests).
+     * e.g. {"action": "open", "app": "youtube"} or {"action": "click", "text": "Search"}
+     */
+    fun executeGeminiJsonCommand(jsonCommand: String): com.example.service.AssistantActionResult {
+        val command = com.example.service.AssistantActionManager.parseCommand(jsonCommand)
+            ?: com.example.service.AssistantActionCommand(
+                action = "unknown",
+                rawJson = jsonCommand
+            )
+        val result = com.example.service.AssistantActionManager.executeCommand(context, command)
+        _uiState.update {
+            it.copy(
+                lastActionCommand = command,
+                lastActionResult = result,
+                statusText = result.message
+            )
+        }
+        return result
+    }
+
+    fun checkAccessibilityStatus() {
+        val isConnected = com.example.service.VoiceAssistantAccessibilityService.isConnected() ||
+                com.example.service.AssistantActionManager.isAccessibilityServiceEnabled(context)
+        _uiState.update { it.copy(isAccessibilityConnected = isConnected) }
+    }
+
+    fun openAccessibilitySettings() {
+        com.example.service.AssistantActionManager.openAccessibilitySettings(context)
+    }
+
+    private fun cleanConversationalSpeech(text: String): String {
+        return text
+            .replace(Regex("```(?:json)?.*?```", RegexOption.DOT_MATCHES_ALL), "")
+            .replace(Regex("\\{[^{}]*\"action\"[^{}]*\\}", RegexOption.DOT_MATCHES_ALL), "")
+            .trim()
     }
 
     fun speakTts(text: String? = null) {
