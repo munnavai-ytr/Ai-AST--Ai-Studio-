@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -22,13 +22,23 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      - name: Make Gradlew Executable
-        run: chmod +x gradlew || true
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # Check if gradlew exists; if not, generate it using system gradle
+      - name: Ensure Gradle Wrapper Exists
+        run: |
+          if [ ! -f ./gradlew ]; then
+            echo "gradlew not found! Generating wrapper..."
+            sudo apt-get update && sudo apt-get install -y gradle
+            gradle wrapper
+          fi
+          chmod +x gradlew
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace --info
 
-      - name: Upload Debug APK
+      - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Mimi-App-Debug-APK
