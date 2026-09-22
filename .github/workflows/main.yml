@@ -22,18 +22,23 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Accept Android SDK Licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      # Check if gradlew exists; if not, generate it using system gradle
-      - name: Ensure Gradle Wrapper Exists
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Generate Debug Keystore
         run: |
-          if [ ! -f ./gradlew ]; then
-            echo "gradlew not found! Generating wrapper..."
-            sudo apt-get update && sudo apt-get install -y gradle
-            gradle wrapper
+          if [ ! -f ./debug.keystore ]; then
+            keytool -genkey -v -keystore ./debug.keystore \
+              -storepass android -alias androiddebugkey \
+              -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
           fi
-          chmod +x gradlew
+
+      - name: Create .env file with Gemini API Key
+        run: echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace --info
