@@ -205,12 +205,18 @@ class VoiceToTextViewModel(application: Application) : AndroidViewModel(applicat
         // Stop TTS speech if running
         stopSpeakingTts()
 
+        // 1. Coordinate with SpeechRecognitionManager: Pause background WakeWordService if running
+        com.example.voice.SpeechRecognitionManager.requestManualRecognitionStart()
+
         viewModelScope.launch(Dispatchers.Main) {
             try {
-                if (speechRecognizer == null) {
-                    speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
-                        setRecognitionListener(createRecognitionListener())
-                    }
+                // If speechRecognizer already exists, recreate it safely to clear any pending state
+                try {
+                    speechRecognizer?.destroy()
+                } catch (_: Exception) {}
+
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
+                    setRecognitionListener(createRecognitionListener())
                 }
 
                 val currentLang = _uiState.value.selectedLanguage
@@ -244,6 +250,7 @@ class VoiceToTextViewModel(application: Application) : AndroidViewModel(applicat
 
                 speechRecognizer?.startListening(intent)
             } catch (e: Exception) {
+                com.example.voice.SpeechRecognitionManager.onManualRecognitionFinished()
                 _uiState.update {
                     it.copy(
                         isListening = false,
@@ -259,8 +266,13 @@ class VoiceToTextViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch(Dispatchers.Main) {
             try {
                 speechRecognizer?.stopListening()
+                speechRecognizer?.destroy()
+                speechRecognizer = null
             } catch (_: Exception) {
             }
+            // Release manual lock and resume background wake-word service if paused
+            com.example.voice.SpeechRecognitionManager.onManualRecognitionFinished()
+
             _uiState.update {
                 it.copy(
                     isListening = false,
@@ -496,6 +508,30 @@ class VoiceToTextViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             override fun onError(error: Int) {
+                // If recognizer is busy (error code 8), automatically retry after 1 second
+                if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+                    val isBn = _uiState.value.selectedLanguage == SpeechLanguage.BENGALI
+                    _uiState.update {
+                        it.copy(
+                            isListening = true,
+                            isSpeaking = false,
+                            statusText = if (isBn) "পুনরায় চেষ্টা করা হচ্ছে..." else "Recognizer busy, retrying in 1s..."
+                        )
+                    }
+                    viewModelScope.launch(Dispatchers.Main) {
+                        try {
+                            speechRecognizer?.destroy()
+                            speechRecognizer = null
+                        } catch (_: Exception) {}
+                        kotlinx.coroutines.delay(1000)
+                        startListening()
+                    }
+                    return
+                }
+
+                // For all other errors, release the manual lock so background service can resume
+                com.example.voice.SpeechRecognitionManager.onManualRecognitionFinished()
+
                 val isBn = _uiState.value.selectedLanguage == SpeechLanguage.BENGALI
                 val message = when (error) {
                     SpeechRecognizer.ERROR_AUDIO -> if (isBn) "অডিও রেকর্ডিং সমস্যা" else "Audio recording error"
@@ -522,6 +558,9 @@ class VoiceToTextViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             override fun onResults(results: Bundle?) {
+                // Release manual lock and resume background wake-word service
+                com.example.voice.SpeechRecognitionManager.onManualRecognitionFinished()
+
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 val recognized = matches?.firstOrNull() ?: ""
 
@@ -566,6 +605,7 @@ class VoiceToTextViewModel(application: Application) : AndroidViewModel(applicat
             speechRecognizer?.destroy()
             speechRecognizer = null
         } catch (_: Exception) {}
+        com.example.voice.SpeechRecognitionManager.onManualRecognitionFinished()
         ttsManager.shutdown()
     }
 }

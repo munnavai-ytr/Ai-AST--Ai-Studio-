@@ -28,6 +28,7 @@ class WakeWordDetector(
 ) {
 
     private val isRunning = AtomicBoolean(false)
+    private val isPausedForManual = AtomicBoolean(false)
     private var listeningJob: Job? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var speechRecognizer: SpeechRecognizer? = null
@@ -62,8 +63,45 @@ class WakeWordDetector(
         }
     }
 
+    /**
+     * Temporarily pause the background wake word detector so that the foreground
+     * manual microphone can use Android's single SpeechRecognizer instance without conflict.
+     */
+    fun pauseListeningForManual() {
+        if (!isRunning.get() || isPausedForManual.getAndSet(true)) return
+
+        Log.d(TAG, "Pausing wake-word detector for manual mic session")
+        mainHandler.post {
+            try {
+                speechRecognizer?.stopListening()
+                speechRecognizer?.destroy()
+                speechRecognizer = null
+            } catch (e: Exception) {
+                Log.w(TAG, "Error destroying speechRecognizer on pause: ${e.message}")
+            }
+        }
+        WakeWordStateManager.updateStatus("Background listening paused (Manual mic active)")
+        SpeechRecognitionManager.notifyWakeWordListeningStopped()
+    }
+
+    /**
+     * Resumes background wake word detection after manual mic session completes.
+     */
+    fun resumeListeningFromManual() {
+        if (!isRunning.get() || !isPausedForManual.getAndSet(false)) return
+
+        Log.d(TAG, "Resuming wake-word detector after manual mic session")
+        WakeWordStateManager.updateStatus("Listening for 'Hey Mimi' (Voice profile active)")
+        mainHandler.postDelayed({
+            if (isRunning.get() && !isPausedForManual.get()) {
+                startSpeechRecognizerLoop()
+            }
+        }, 300)
+    }
+
     fun stopListening() {
         if (!isRunning.getAndSet(false)) return
+        isPausedForManual.set(false)
 
         Log.d(TAG, "Stopping wake-word detector")
         listeningJob?.cancel()
@@ -128,7 +166,10 @@ class WakeWordDetector(
     }
 
     private fun startSpeechRecognizerLoop() {
-        if (!isRunning.get()) return
+        if (!isRunning.get() || isPausedForManual.get() || SpeechRecognitionManager.isManualActive()) {
+            Log.d(TAG, "Skipping wake-word recognizer start: manual mic is currently active or paused")
+            return
+        }
 
         try {
             speechRecognizer?.destroy()
@@ -144,6 +185,7 @@ class WakeWordDetector(
             }
 
             speechRecognizer?.startListening(intent)
+            SpeechRecognitionManager.notifyWakeWordListeningStarted()
         } catch (e: Exception) {
             Log.e(TAG, "Error initiating speech recognition loop: ${e.message}")
             scheduleRestartRecognizer(1500)
@@ -151,9 +193,9 @@ class WakeWordDetector(
     }
 
     private fun scheduleRestartRecognizer(delayMs: Long) {
-        if (!isRunning.get()) return
+        if (!isRunning.get() || isPausedForManual.get() || SpeechRecognitionManager.isManualActive()) return
         mainHandler.postDelayed({
-            if (isRunning.get()) {
+            if (isRunning.get() && !isPausedForManual.get() && !SpeechRecognitionManager.isManualActive()) {
                 startSpeechRecognizerLoop()
             }
         }, delayMs)

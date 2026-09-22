@@ -96,6 +96,18 @@ class WakeWordService : Service() {
             }
         )
 
+        // Register hooks with SpeechRecognitionManager to coordinate with manual mic
+        com.example.voice.SpeechRecognitionManager.registerWakeWordHooks(
+            onPause = {
+                wakeWordDetector?.pauseListeningForManual()
+                updateNotification("Listening paused (Manual microphone active)")
+            },
+            onResume = {
+                wakeWordDetector?.resumeListeningFromManual()
+                updateNotification("Listening for 'Hey Mimi' (Voice profile active)")
+            }
+        )
+
         wakeWordDetector?.startListening(serviceScope)
     }
 
@@ -184,6 +196,7 @@ class WakeWordService : Service() {
     }
 
     private fun stopForegroundService() {
+        com.example.voice.SpeechRecognitionManager.unregisterWakeWordHooks()
         wakeWordDetector?.stopListening()
         wakeWordDetector = null
         serviceScope.cancel()
@@ -193,6 +206,7 @@ class WakeWordService : Service() {
     }
 
     override fun onDestroy() {
+        com.example.voice.SpeechRecognitionManager.unregisterWakeWordHooks()
         wakeWordDetector?.stopListening()
         wakeWordDetector = null
         serviceScope.cancel()
