@@ -36,6 +36,10 @@ import androidx.compose.material.icons.filled.Hearing
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Security
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -452,6 +456,61 @@ fun VoiceToTextScreen(
                                 uncheckedTrackColor = DarkSurfaceVariant
                             ),
                             modifier = Modifier.testTag("wake_word_switch")
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Floating UI overlay toggle / test launcher
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DarkSurfaceVariant.copy(alpha = 0.6f))
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Layers,
+                                contentDescription = null,
+                                tint = NeonCyan,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "ফ্লোটিং উইন্ডো (System Overlay)",
+                                color = TextPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        Text(
+                            text = if (Settings.canDrawOverlays(context)) "ওভারলে খুলুন ›" else "অনুমতি দিন ›",
+                            color = NeonCyan,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable {
+                                    if (Settings.canDrawOverlays(context)) {
+                                        com.example.service.FloatingUIService.start(context)
+                                    } else {
+                                        val intent = Intent(
+                                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                            Uri.parse("package:${context.packageName}")
+                                        ).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(intent)
+                                    }
+                                }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .testTag("btn_toggle_floating_overlay")
                         )
                     }
 

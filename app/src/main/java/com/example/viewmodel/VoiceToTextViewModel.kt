@@ -316,31 +316,39 @@ class VoiceToTextViewModel(application: Application) : AndroidViewModel(applicat
 
         viewModelScope.launch(Dispatchers.IO) {
             val result = GeminiApiClient.askAssistant(targetText, isBengali = isBn)
-            result.onSuccess { reply ->
-                // Check if reply contains an automation command from Gemini
-                val actionCommand = com.example.service.AssistantActionManager.parseCommand(reply)
-                val actionResult = if (actionCommand != null) {
-                    com.example.service.AssistantActionManager.executeCommand(context, actionCommand)
-                } else {
-                    null
+            result.onSuccess { rawReply ->
+                // Parse modern Mimi response containing conversational reply and actions array
+                val mimiResponse = com.example.service.AssistantActionManager.parseMimiResponse(rawReply)
+                val replyText = mimiResponse.reply
+
+                // 1. Speak reply immediately using native TTS
+                if (replyText.isNotBlank()) {
+                    speakTts(replyText)
                 }
 
-                val speechText = cleanConversationalSpeech(reply).ifBlank {
-                    actionResult?.message ?: if (actionCommand != null) "Executing ${actionCommand.action}" else ""
+                // 2. Simultaneously execute device action commands in background
+                var actionResult: com.example.service.AssistantActionResult? = null
+                for (action in mimiResponse.actions) {
+                    actionResult = com.example.service.AssistantActionManager.executeCommand(context, action)
                 }
+
+                val fallbackSpeechText = if (replyText.isBlank()) {
+                    actionResult?.message ?: if (mimiResponse.actions.isNotEmpty()) "Executing ${mimiResponse.actions.first().action}" else ""
+                } else null
 
                 _uiState.update {
                     it.copy(
                         assistantStatus = AssistantStatus.IDLE,
-                        geminiResponse = reply,
-                        lastActionCommand = actionCommand,
+                        geminiResponse = if (replyText.isNotBlank()) replyText else rawReply,
+                        lastActionCommand = mimiResponse.actions.firstOrNull(),
                         lastActionResult = actionResult,
                         statusText = actionResult?.message ?: if (isBn) "সহকারী উত্তর তৈরি করেছে" else "Assistant responded"
                     )
                 }
-                // Speak out loud automatically using Android's Text-to-Speech (TTS)
-                if (speechText.isNotBlank()) {
-                    speakTts(speechText)
+
+                // If no direct conversational reply was present, speak the action result
+                if (!fallbackSpeechText.isNullOrBlank()) {
+                    speakTts(fallbackSpeechText)
                 }
             }.onFailure { err ->
                 _uiState.update {

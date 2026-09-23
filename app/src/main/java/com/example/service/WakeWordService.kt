@@ -13,6 +13,7 @@ import android.os.IBinder
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -88,7 +89,7 @@ class WakeWordService : Service() {
             profileRepository = VoiceProfileRepository.getInstance(applicationContext),
             onWakeWordDetected = { matchResult ->
                 vibrateDevice()
-                launchMainActivityOnWake()
+                launchAssistantOnWake()
                 updateNotification("Hey Mimi detected! Opening assistant...")
             },
             onOtherVoiceIgnored = { similarity, explanation ->
@@ -111,17 +112,23 @@ class WakeWordService : Service() {
         wakeWordDetector?.startListening(serviceScope)
     }
 
-    private fun launchMainActivityOnWake() {
+    private fun launchAssistantOnWake() {
         try {
-            val intent = Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra(EXTRA_WAKE_TRIGGERED, true)
+            if (Settings.canDrawOverlays(this)) {
+                Log.d(TAG, "Launching FloatingUIService overlay window on wake word")
+                FloatingUIService.start(this)
+            } else {
+                Log.d(TAG, "Overlay permission not granted; launching MainActivity")
+                val intent = Intent(this, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    putExtra(EXTRA_WAKE_TRIGGERED, true)
+                }
+                startActivity(intent)
             }
-            startActivity(intent)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch MainActivity: ${e.message}")
+            Log.e(TAG, "Failed to launch assistant on wake: ${e.message}")
         }
     }
 

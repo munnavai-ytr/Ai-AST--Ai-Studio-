@@ -3,8 +3,10 @@ package com.example.voice
 import android.content.Context
 import android.content.Intent
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -71,6 +73,7 @@ class WakeWordDetector(
         if (!isRunning.get() || isPausedForManual.getAndSet(true)) return
 
         Log.d(TAG, "Pausing wake-word detector for manual mic session")
+        unmuteSystemSounds()
         mainHandler.post {
             try {
                 speechRecognizer?.stopListening()
@@ -104,6 +107,7 @@ class WakeWordDetector(
         isPausedForManual.set(false)
 
         Log.d(TAG, "Stopping wake-word detector")
+        unmuteSystemSounds()
         listeningJob?.cancel()
         listeningJob = null
 
@@ -165,6 +169,49 @@ class WakeWordDetector(
         }
     }
 
+    private var audioManager: AudioManager? = null
+    private var isMutedForBeep = false
+
+    private fun muteSystemSounds() {
+        try {
+            if (audioManager == null) {
+                audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            }
+            val am = audioManager ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.adjustStreamVolume(AudioManager.STREAM_SYSTEM, AudioManager.ADJUST_MUTE, 0)
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
+            } else {
+                @Suppress("DEPRECATION")
+                am.setStreamMute(AudioManager.STREAM_SYSTEM, true)
+                @Suppress("DEPRECATION")
+                am.setStreamMute(AudioManager.STREAM_MUSIC, true)
+            }
+            isMutedForBeep = true
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not temporarily mute audio streams: ${e.message}")
+        }
+    }
+
+    private fun unmuteSystemSounds() {
+        if (!isMutedForBeep) return
+        try {
+            val am = audioManager ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.adjustStreamVolume(AudioManager.STREAM_SYSTEM, AudioManager.ADJUST_UNMUTE, 0)
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
+            } else {
+                @Suppress("DEPRECATION")
+                am.setStreamMute(AudioManager.STREAM_SYSTEM, false)
+                @Suppress("DEPRECATION")
+                am.setStreamMute(AudioManager.STREAM_MUSIC, false)
+            }
+            isMutedForBeep = false
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not unmute audio streams: ${e.message}")
+        }
+    }
+
     private fun startSpeechRecognizerLoop() {
         if (!isRunning.get() || isPausedForManual.get() || SpeechRecognitionManager.isManualActive()) {
             Log.d(TAG, "Skipping wake-word recognizer start: manual mic is currently active or paused")
@@ -184,9 +231,18 @@ class WakeWordDetector(
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
             }
 
+            // CRITICAL: Mute system & music streams right before startListening to eliminate the Android default "ding" beep
+            muteSystemSounds()
             speechRecognizer?.startListening(intent)
+
+            // Unmute shortly after (250ms delay) so the startListening ding sound is completely silenced
+            mainHandler.postDelayed({
+                unmuteSystemSounds()
+            }, 250)
+
             SpeechRecognitionManager.notifyWakeWordListeningStarted()
         } catch (e: Exception) {
+            unmuteSystemSounds()
             Log.e(TAG, "Error initiating speech recognition loop: ${e.message}")
             scheduleRestartRecognizer(1500)
         }

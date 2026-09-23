@@ -27,41 +27,132 @@ object AssistantActionManager {
     )
 
     /**
+     * Parses the modern Gemini response containing:
+     * { "reply": "...", "actions": [ {"type": "OPEN_APP", "target": "..."} ] }
+     */
+    fun parseMimiResponse(rawText: String): MimiGeminiResponse {
+        if (rawText.isBlank()) return MimiGeminiResponse(reply = "")
+
+        val cleanJson = extractCleanJson(rawText)
+        if (cleanJson != null) {
+            val replyMatch = Regex("\"reply\"\\s*:\\s*\"((?:\\\\\"|[^\"])*)\"", RegexOption.DOT_MATCHES_ALL).find(cleanJson)
+            val reply = replyMatch?.groupValues?.get(1)?.replace("\\\"", "\"")?.replace("\\n", "\n") ?: ""
+
+            val actionsList = mutableListOf<AssistantActionCommand>()
+
+            // Extract actions array items
+            val actionsArrayMatch = Regex("\"actions\"\\s*:\\s*\\[(.*?)\\]", RegexOption.DOT_MATCHES_ALL).find(cleanJson)
+            if (actionsArrayMatch != null) {
+                val arrayContent = actionsArrayMatch.groupValues[1]
+                val objPattern = Regex("\\{(.*?)\\}", RegexOption.DOT_MATCHES_ALL)
+                objPattern.findAll(arrayContent).forEach { match ->
+                    val actionJson = match.value
+                    val parsed = parseSingleActionRegex(actionJson)
+                    if (parsed != null) {
+                        actionsList.add(parsed)
+                    }
+                }
+            } else {
+                // Fallback to single action format {"action": "..."}
+                val singleAction = parseJsonObject(cleanJson)
+                if (singleAction != null) {
+                    actionsList.add(singleAction)
+                }
+            }
+
+            return MimiGeminiResponse(
+                reply = reply.ifBlank { cleanConversationalReply(rawText) },
+                actions = actionsList,
+                rawJson = cleanJson
+            )
+        }
+
+        // Fallback for conversational plain text or partial match
+        return MimiGeminiResponse(
+            reply = cleanConversationalReply(rawText),
+            actions = emptyList(),
+            rawJson = rawText
+        )
+    }
+
+    private fun extractCleanJson(rawText: String): String? {
+        val trimmed = rawText.trim()
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            return trimmed
+        }
+        if (trimmed.contains("```")) {
+            val codeBlockPattern = Pattern.compile("```(?:json)?\\s*(\\{.*?\\})\\s*```", Pattern.DOTALL)
+            val matcher = codeBlockPattern.matcher(trimmed)
+            if (matcher.find()) {
+                return matcher.group(1)?.trim()
+            }
+        }
+        val firstBrace = trimmed.indexOf('{')
+        val lastBrace = trimmed.lastIndexOf('}')
+        if (firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace) {
+            return trimmed.substring(firstBrace, lastBrace + 1)
+        }
+        return null
+    }
+
+    private fun parseSingleActionRegex(jsonString: String): AssistantActionCommand? {
+        val typeMatch = Regex("\"(?:type|action)\"\\s*:\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE).find(jsonString) ?: return null
+        val type = typeMatch.groupValues[1].trim()
+
+        val target = Regex("\"target\"\\s*:\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.trim()
+        val app = Regex("\"app\"\\s*:\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.trim() ?: target
+        val text = Regex("\"text\"\\s*:\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.trim() ?: target
+        val targetId = Regex("\"targetId\"\\s*:\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.trim()
+        val setting = Regex("\"setting\"\\s*:\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.trim() ?: target
+        val query = Regex("\"(?:query|video|search)\"\\s*:\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.trim() ?: target
+        val state = Regex("\"(?:state|status|mode)\"\\s*:\\s*\"?([^\",}]+)\"?", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.trim()
+
+        val action = when (type.uppercase()) {
+            "OPEN_APP", "OPEN", "LAUNCH" -> "open"
+            "CLICK", "TAP", "PRESS" -> "click"
+            "GLOBAL_ACTION", "GESTURE" -> {
+                val actionVal = Regex("\"action\"\\s*:\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.trim()
+                actionVal?.lowercase() ?: target?.lowercase() ?: "home"
+            }
+            "HOME" -> "home"
+            "BACK" -> "back"
+            "RECENTS" -> "recents"
+            "NOTIFICATIONS" -> "notifications"
+            "SCROLL" -> {
+                val dir = Regex("\"direction\"\\s*:\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.trim()?.uppercase()
+                if (dir == "BACKWARD" || dir == "UP") "scroll_backward" else "scroll_forward"
+            }
+            "OPEN_SETTINGS", "SETTINGS" -> "open_settings"
+            "FLASHLIGHT", "TORCH" -> "flashlight"
+            "PLAY_YOUTUBE", "YOUTUBE" -> "play_youtube"
+            else -> type.lowercase()
+        }
+
+        return AssistantActionCommand(
+            action = action,
+            app = if (action == "open") app else null,
+            text = if (action == "click") text else null,
+            targetId = targetId,
+            setting = if (action == "open_settings") setting else null,
+            query = if (action == "play_youtube") query else null,
+            state = state,
+            rawJson = jsonString.trim()
+        )
+    }
+
+    private fun cleanConversationalReply(text: String): String {
+        return text.replace(Regex("```(?:json)?.*?```", RegexOption.DOT_MATCHES_ALL), "")
+            .replace(Regex("\\{.*?\\}", RegexOption.DOT_MATCHES_ALL), "")
+            .trim()
+    }
+
+    /**
      * Parses a structured JSON command from Gemini's response string.
      * Can extract JSON even if embedded within conversational text or markdown code blocks.
      */
     fun parseCommand(rawText: String): AssistantActionCommand? {
-        if (rawText.isBlank()) return null
-
-        // 1. Try regex extraction of JSON object with "action" key
-        val matcher = JSON_ACTION_PATTERN.matcher(rawText)
-        if (matcher.find()) {
-            val jsonCandidate = matcher.group()
-            val parsed = parseJsonObject(jsonCandidate)
-            if (parsed != null) return parsed
-        }
-
-        // 2. Try whole string as JSON if curly braces are present
-        val trimmed = rawText.trim()
-        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-            val parsed = parseJsonObject(trimmed)
-            if (parsed != null) return parsed
-        }
-
-        // 3. Try markdown code block extraction
-        if (rawText.contains("```")) {
-            val codeBlockPattern = Pattern.compile("```(?:json)?\\s*(\\{.*?\\})\\s*```", Pattern.DOTALL)
-            val codeMatcher = codeBlockPattern.matcher(rawText)
-            if (codeMatcher.find()) {
-                val jsonCandidate = codeMatcher.group(1)
-                if (jsonCandidate != null) {
-                    val parsed = parseJsonObject(jsonCandidate)
-                    if (parsed != null) return parsed
-                }
-            }
-        }
-
-        return null
+        val mimiResponse = parseMimiResponse(rawText)
+        return mimiResponse.actions.firstOrNull()
     }
 
     private fun parseJsonObject(jsonString: String): AssistantActionCommand? {

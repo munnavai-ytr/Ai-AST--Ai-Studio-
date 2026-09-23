@@ -199,4 +199,54 @@ class ExampleUnitTest {
         val command = com.example.service.AssistantActionManager.parseCommand(normalText)
         org.junit.Assert.assertNull(command)
     }
+
+    @Test
+    fun testParseMimiPersonaResponseWithReplyAndActions() {
+        val json = """
+            {
+               "reply": "দোস্ত, ইউটিউব ওপেন করে দিচ্ছি!",
+               "actions": [
+                  {"type": "OPEN_APP", "target": "com.google.android.youtube"}
+               ]
+            }
+        """.trimIndent()
+
+        val mimiResponse = com.example.service.AssistantActionManager.parseMimiResponse(json)
+        assertEquals("দোস্ত, ইউটিউব ওপেন করে দিচ্ছি!", mimiResponse.reply)
+        assertEquals(1, mimiResponse.actions.size)
+        val action = mimiResponse.actions[0]
+        assertEquals("open", action.action)
+        assertEquals("com.google.android.youtube", action.app)
+    }
+
+    @Test
+    fun testParseMimiPersonaGlobalActionAndClick() {
+        val json = """
+            {
+               "reply": "I got you! Going to home screen now.",
+               "actions": [
+                  {"type": "GLOBAL_ACTION", "action": "HOME"}
+               ]
+            }
+        """.trimIndent()
+
+        val mimiResponse = com.example.service.AssistantActionManager.parseMimiResponse(json)
+        assertEquals("I got you! Going to home screen now.", mimiResponse.reply)
+        assertEquals(1, mimiResponse.actions.size)
+        assertEquals("home", mimiResponse.actions[0].action)
+    }
+
+    @Test
+    fun testParseMimiChatOnlyResponseWithoutActions() {
+        val json = """
+            {
+               "reply": "I'm doing awesome, buddy! How about you?",
+               "actions": []
+            }
+        """.trimIndent()
+
+        val mimiResponse = com.example.service.AssistantActionManager.parseMimiResponse(json)
+        assertEquals("I'm doing awesome, buddy! How about you?", mimiResponse.reply)
+        assertTrue(mimiResponse.actions.isEmpty())
+    }
 }

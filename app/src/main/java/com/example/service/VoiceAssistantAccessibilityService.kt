@@ -20,14 +20,7 @@ import java.net.URLEncoder
 
 /**
  * Data structure representing a structured action command received from Gemini.
- * Example commands:
- * {"action": "open", "app": "youtube"}
- * {"action": "click", "text": "Search"}
- * {"action": "open_settings", "setting": "wifi"}
- * {"action": "flashlight", "state": "on"}
- * {"action": "play_youtube", "query": "lofi music"}
- * {"action": "home"}
- * {"action": "back"}
+ * Supports both legacy flat format and modern actions array format.
  */
 data class AssistantActionCommand(
     val action: String,
@@ -37,6 +30,16 @@ data class AssistantActionCommand(
     val setting: String? = null,
     val query: String? = null,
     val state: String? = null,
+    val rawJson: String? = null
+)
+
+/**
+ * Encapsulates full parsed response from Gemini:
+ * A conversational human-like 'reply' and a list of 'actions' to execute.
+ */
+data class MimiGeminiResponse(
+    val reply: String,
+    val actions: List<AssistantActionCommand> = emptyList(),
     val rawJson: String? = null
 )
 
