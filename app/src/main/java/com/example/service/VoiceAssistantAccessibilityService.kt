@@ -2,9 +2,12 @@ package com.example.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.accessibilityservice.GestureDescription
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Path
+import android.graphics.Rect
 import android.hardware.camera2.CameraManager
 import android.net.Uri
 import android.os.Build
@@ -30,6 +33,8 @@ data class AssistantActionCommand(
     val setting: String? = null,
     val query: String? = null,
     val state: String? = null,
+    val x: Float? = null,
+    val y: Float? = null,
     val rawJson: String? = null
 )
 
@@ -128,7 +133,14 @@ class VoiceAssistantAccessibilityService : AccessibilityService() {
             }
             "click", "tap", "press" -> {
                 val targetText = command.text ?: command.app ?: ""
-                if (targetText.isBlank() && command.targetId.isNullOrBlank()) {
+                if (command.x != null && command.y != null) {
+                    val dispatched = dispatchTapGesture(command.x, command.y)
+                    AssistantActionResult(
+                        success = dispatched,
+                        message = "Tapped at (${command.x.toInt()}, ${command.y.toInt()})",
+                        actionType = "click"
+                    )
+                } else if (targetText.isBlank() && command.targetId.isNullOrBlank()) {
                     AssistantActionResult(false, "No target text or ID specified to click", command.action)
                 } else {
                     clickElement(targetText, command.targetId)
@@ -293,6 +305,63 @@ class VoiceAssistantAccessibilityService : AccessibilityService() {
         )
     }
 
+    /**
+     * Recursively traverses the current active window's AccessibilityNodeInfo tree
+     * and returns a newline-separated summary of up to 40 visible, meaningful nodes.
+     * Format per node: [TYPE] text="..." desc="..." clickable=true bounds=(x1,y1,x2,y2)
+     */
+    fun getCurrentScreenSummary(): String {
+        val rootNode = rootInActiveWindow ?: return ""
+        val summaryLines = mutableListOf<String>()
+        val maxNodes = 40
+
+        fun traverse(node: AccessibilityNodeInfo?) {
+            if (node == null || summaryLines.size >= maxNodes) return
+
+            val isVisible = node.isVisibleToUser
+            val rawText = node.text?.toString()?.trim()
+            val rawDesc = node.contentDescription?.toString()?.trim()
+            val isClickable = node.isClickable
+
+            val hasText = !rawText.isNullOrBlank()
+            val hasDesc = !rawDesc.isNullOrBlank()
+
+            if (isVisible && (hasText || hasDesc || isClickable)) {
+                val rawClassName = node.className?.toString() ?: "View"
+                val simpleType = rawClassName.substringAfterLast('.').ifBlank { "View" }
+
+                val rect = Rect()
+                node.getBoundsInScreen(rect)
+
+                val cleanText = rawText?.replace("\"", "'")?.replace("\n", " ") ?: ""
+                val cleanDesc = rawDesc?.replace("\"", "'")?.replace("\n", " ") ?: ""
+
+                val line = "[$simpleType] text=\"$cleanText\" desc=\"$cleanDesc\" clickable=$isClickable bounds=(${rect.left},${rect.top},${rect.right},${rect.bottom})"
+                summaryLines.add(line)
+            }
+
+            for (i in 0 until node.childCount) {
+                if (summaryLines.size >= maxNodes) break
+                val child = try {
+                    node.getChild(i)
+                } catch (_: Exception) {
+                    null
+                }
+                if (child != null) {
+                    traverse(child)
+                }
+            }
+        }
+
+        try {
+            traverse(rootNode)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error generating screen summary: ${e.message}", e)
+        }
+
+        return summaryLines.joinToString("\n")
+    }
+
     private fun scrollScreen(forward: Boolean): AssistantActionResult {
         val root = rootInActiveWindow ?: return AssistantActionResult(false, "No active window", "scroll")
         val scrollable = findScrollableNode(root)
@@ -319,9 +388,53 @@ class VoiceAssistantAccessibilityService : AccessibilityService() {
     }
 
     /**
+     * Dispatches a tap gesture at the specified screen coordinates using GestureDescription.
+     * Shows the visual AI tap indicator overlay right before dispatching the gesture.
+     */
+    fun dispatchTapGesture(x: Float, y: Float, callback: ((Boolean) -> Unit)? = null): Boolean {
+        TapIndicatorOverlay.showTapAt(this, x, y)
+
+        val path = Path().apply {
+            moveTo(x, y)
+        }
+        val stroke = GestureDescription.StrokeDescription(path, 0, 100)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+
+        return dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                super.onCompleted(gestureDescription)
+                Log.d(TAG, "dispatchGesture tap completed at ($x, $y)")
+                callback?.invoke(true)
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                super.onCancelled(gestureDescription)
+                Log.w(TAG, "dispatchGesture tap cancelled at ($x, $y)")
+                callback?.invoke(false)
+            }
+        }, null)
+    }
+
+    /**
+     * Helper to perform a click at given coordinates.
+     */
+    fun clickAt(x: Float, y: Float): Boolean {
+        return dispatchTapGesture(x, y)
+    }
+
+    /**
      * Traverses the node or its parents to find a clickable element and calls ACTION_CLICK.
+     * Also fetches the node's screen coordinates, triggers TapIndicatorOverlay and dispatchGesture.
      */
     private fun performClickOnNodeOrAncestor(startNode: AccessibilityNodeInfo): Boolean {
+        val bounds = Rect()
+        startNode.getBoundsInScreen(bounds)
+        if (!bounds.isEmpty && bounds.width() > 0 && bounds.height() > 0) {
+            val centerX = bounds.centerX().toFloat()
+            val centerY = bounds.centerY().toFloat()
+            dispatchTapGesture(centerX, centerY)
+        }
+
         var current: AccessibilityNodeInfo? = startNode
         while (current != null) {
             if (current.isClickable) {

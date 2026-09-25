@@ -9,7 +9,7 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.data.gemini.GeminiApiClient
+import com.example.data.AiRouter
 import com.example.model.AssistantStatus
 import com.example.model.SpeechHistoryItem
 import com.example.model.SpeechLanguage
@@ -315,7 +315,7 @@ class VoiceToTextViewModel(application: Application) : AndroidViewModel(applicat
         }
 
         viewModelScope.launch(Dispatchers.IO) {
-            val result = GeminiApiClient.askAssistant(targetText, isBengali = isBn)
+            val result = AiRouter.ask(targetText, isBengali = isBn)
             result.onSuccess { rawReply ->
                 // Parse modern Mimi response containing conversational reply and actions array
                 val mimiResponse = com.example.service.AssistantActionManager.parseMimiResponse(rawReply)

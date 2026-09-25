@@ -249,4 +249,34 @@ class ExampleUnitTest {
         assertEquals("I'm doing awesome, buddy! How about you?", mimiResponse.reply)
         assertTrue(mimiResponse.actions.isEmpty())
     }
+
+    @Test
+    fun testAiRouterRoutingLogic() {
+        // Under 8 words -> Route to Groq
+        assertTrue(com.example.data.AiRouter.shouldRouteToGroq("YouTube"))
+        assertTrue(com.example.data.AiRouter.shouldRouteToGroq("ইউটিউব খোলো"))
+        assertTrue(com.example.data.AiRouter.shouldRouteToGroq("Turn on the flashlight"))
+
+        // Contains simple keyword -> Route to Groq even if longer than 8 words
+        val longWithKeyword = "Mimi please could you kindly open the camera app right now for me"
+        assertTrue(com.example.data.AiRouter.shouldRouteToGroq(longWithKeyword))
+
+        val longBengaliWithKeyword = "মিমি তুমি কি অনুগ্রহ করে আমার ফোনের ফ্ল্যাশলাইট অন করতে পারবে প্লিজ"
+        assertTrue(com.example.data.AiRouter.shouldRouteToGroq(longBengaliWithKeyword))
+
+        // Long complex prompt with 8 or more words and NO simple keywords -> Route to Gemini
+        val longComplexPrompt = "Can you explain the detailed differences between quantum physics and classical mechanics in simple everyday terms?"
+        assertFalse(com.example.data.AiRouter.shouldRouteToGroq(longComplexPrompt))
+    }
+
+    @Test
+    fun testParseGeminiClickWithCoordinatesCommand() {
+        val json = """{"action": "click", "x": 450.5, "y": 920.0}"""
+        val command = com.example.service.AssistantActionManager.parseCommand(json)
+        assertNotNull(command)
+        assertEquals("click", command?.action)
+        assertEquals(450.5f, command?.x ?: 0f, 0.01f)
+        assertEquals(920.0f, command?.y ?: 0f, 0.01f)
+    }
 }
+

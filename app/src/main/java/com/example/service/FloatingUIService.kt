@@ -27,7 +27,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.example.R
-import com.example.data.gemini.GeminiApiClient
+import com.example.data.AiRouter
 import com.example.tts.AndroidTtsManager
 import com.example.voice.SpeechRecognitionManager
 import kotlinx.coroutines.CoroutineScope
@@ -313,7 +313,7 @@ class FloatingUIService : Service() {
         responseTextView?.text = "Mimi is processing..."
 
         serviceScope.launch(Dispatchers.IO) {
-            val result = GeminiApiClient.askAssistant(prompt, isBengali = true)
+            val result = AiRouter.ask(prompt, isBengali = true)
             result.onSuccess { rawResponse ->
                 val mimiResponse = AssistantActionManager.parseMimiResponse(rawResponse)
 

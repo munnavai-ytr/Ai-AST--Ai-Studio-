@@ -106,6 +106,8 @@ object AssistantActionManager {
         val setting = Regex("\"setting\"\\s*:\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.trim() ?: target
         val query = Regex("\"(?:query|video|search)\"\\s*:\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.trim() ?: target
         val state = Regex("\"(?:state|status|mode)\"\\s*:\\s*\"?([^\",}]+)\"?", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.trim()
+        val x = Regex("\"x\"\\s*:\\s*([0-9.]+)", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.toFloatOrNull()
+        val y = Regex("\"y\"\\s*:\\s*([0-9.]+)", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.toFloatOrNull()
 
         val action = when (type.uppercase()) {
             "OPEN_APP", "OPEN", "LAUNCH" -> "open"
@@ -136,6 +138,8 @@ object AssistantActionManager {
             setting = if (action == "open_settings") setting else null,
             query = if (action == "play_youtube") query else null,
             state = state,
+            x = x,
+            y = y,
             rawJson = jsonString.trim()
         )
     }
@@ -165,6 +169,8 @@ object AssistantActionManager {
         val setting = Regex("\"setting\"\\s*:\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.trim()
         val query = Regex("\"(?:query|video|search)\"\\s*:\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.trim()
         val state = Regex("\"(?:state|status|mode)\"\\s*:\\s*\"?([^\",}]+)\"?", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.trim()
+        val x = Regex("\"x\"\\s*:\\s*([0-9.]+)", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.toFloatOrNull()
+        val y = Regex("\"y\"\\s*:\\s*([0-9.]+)", RegexOption.IGNORE_CASE).find(jsonString)?.groupValues?.get(1)?.toFloatOrNull()
 
         return AssistantActionCommand(
             action = action,
@@ -174,6 +180,8 @@ object AssistantActionManager {
             setting = setting,
             query = query,
             state = state,
+            x = x,
+            y = y,
             rawJson = jsonString.trim()
         )
     }
