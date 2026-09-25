@@ -675,13 +675,10 @@ fun VoiceToTextScreen(
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Text(
-                        text = if (uiState.isSecurityMonitoringActive) {
-                            "স্বচ্ছতা নোটিফিকেশন সহ ব্যাকগ্রাউন্ডে চলছে (Firestore এ ইভেন্ট লগ হবে)"
-                        } else {
-                            "মালিকের সুরক্ষার জন্য সক্রিয় করুন"
-                        },
+                        text = "এই ফিচার শুধু আপনার নিজের ডিভাইসে নতুন app install হলে আপনাকে জানাবে। এটা কোনো ডাটা তৃতীয় পক্ষের কাছে পাঠায় না।\n(This feature only alerts you when a new app is installed on your device. No data is shared with third parties.)",
                         color = TextTertiary,
-                        fontSize = 11.sp
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
                     )
                 }
             }

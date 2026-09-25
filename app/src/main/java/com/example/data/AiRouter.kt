@@ -9,10 +9,18 @@ object AiRouter {
         "close",
         "flashlight",
         "wifi",
+        "camera",
+        "gallery",
+        "calculator",
+        "youtube",
+        "chrome",
+        "maps",
         "খোলো",
         "বন্ধ",
         "অন",
-        "অফ"
+        "অফ",
+        "ক্যামেরা",
+        "ক্যালকুলেটর"
     )
 
     fun shouldRouteToGroq(userPrompt: String): Boolean {

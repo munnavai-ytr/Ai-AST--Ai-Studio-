@@ -1,21 +1,27 @@
 package com.example.data.groq
 
+import android.util.Log
 import com.example.BuildConfig
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlinx.coroutines.delay
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.Header
 import retrofit2.http.POST
+import java.io.IOException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 @JsonClass(generateAdapter = true)
 data class GroqChatRequest(
-    val model: String = "llama-3.3-70b-versatile",
+    val model: String = "openai/gpt-oss-120b",
     val messages: List<GroqMessage>,
     val temperature: Float? = 0.1f,
     val response_format: GroqResponseFormat? = GroqResponseFormat("json_object")
@@ -60,6 +66,7 @@ interface GroqApiService {
 }
 
 object GroqApiClient {
+    private const val TAG = "GroqApiClient"
     private const val BASE_URL = "https://api.groq.com/openai/v1/"
 
     private val moshi: Moshi by lazy {
@@ -74,9 +81,9 @@ object GroqApiClient {
         }
         OkHttpClient.Builder()
             .addInterceptor(logging)
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(10, TimeUnit.SECONDS)
             .build()
     }
 
@@ -114,7 +121,7 @@ object GroqApiClient {
         """.trimIndent()
 
         val request = GroqChatRequest(
-            model = "llama-3.3-70b-versatile",
+            model = "openai/gpt-oss-120b",
             messages = listOf(
                 GroqMessage(role = "system", content = systemInstructionText),
                 GroqMessage(role = "user", content = userPrompt)
@@ -123,21 +130,68 @@ object GroqApiClient {
             response_format = GroqResponseFormat(type = "json_object")
         )
 
-        return try {
-            val response = service.createChatCompletion(
-                authorization = "Bearer $apiKey",
-                request = request
-            )
-            val candidateText = response.choices?.firstOrNull()?.message?.content
-            if (!candidateText.isNullOrBlank()) {
-                Result.success(candidateText.trim())
-            } else if (response.error?.message != null) {
-                Result.failure(Exception(response.error.message))
-            } else {
-                Result.failure(Exception("Empty response received from Groq"))
+        var attempts = 0
+        val maxAttempts = 2
+
+        while (attempts < maxAttempts) {
+            attempts++
+            try {
+                val response = service.createChatCompletion(
+                    authorization = "Bearer $apiKey",
+                    request = request
+                )
+                val candidateText = response.choices?.firstOrNull()?.message?.content
+                if (!candidateText.isNullOrBlank()) {
+                    return Result.success(candidateText.trim())
+                } else if (response.error?.message != null) {
+                    val errMsg = response.error.message
+                    Log.e(TAG, "Groq response error: $errMsg")
+                    return Result.failure(Exception(errMsg))
+                } else {
+                    return Result.failure(Exception("Empty response received from Groq"))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Groq API call attempt $attempts failed", e)
+
+                val isRetryableHttp = e is HttpException && (e.code() in listOf(500, 502, 503))
+                if (attempts < maxAttempts && isRetryableHttp) {
+                    Log.w(TAG, "Retrying Groq API call after 800ms due to HTTP ${ (e as HttpException).code() }...")
+                    delay(800)
+                    continue
+                }
+
+                val userFriendlyMessage = getUserFriendlyErrorMessage(e, isBengali)
+                return Result.failure(Exception(userFriendlyMessage))
             }
-        } catch (e: Exception) {
-            Result.failure(e)
+        }
+
+        return Result.failure(
+            Exception(
+                if (isBengali) "সার্ভার এই মুহূর্তে ব্যস্ত, একটু পর আবার চেষ্টা করছি..."
+                else "Server is busy, retrying..."
+            )
+        )
+    }
+
+    private fun getUserFriendlyErrorMessage(e: Exception, isBengali: Boolean): String {
+        return when (e) {
+            is HttpException -> {
+                when (e.code()) {
+                    503, 502, 500 -> if (isBengali) "সার্ভার এই মুহূর্তে ব্যস্ত, একটু পর আবার চেষ্টা করছি..." else "Server is busy, retrying..."
+                    429 -> if (isBengali) "অনুরোধের সীমা শেষ, কিছুক্ষণ অপেক্ষা করুন" else "Rate limit reached, please wait"
+                    401, 403 -> if (isBengali) "API key সঠিক নয়, দয়া করে সেটিংস চেক করুন" else "Invalid API key, please check settings"
+                    else -> if (isBengali) "অনুরোধটি সম্পন্ন করা যায়নি (কোড: ${e.code()})" else "Request failed (code: ${e.code()})"
+                }
+            }
+            is SocketTimeoutException, is UnknownHostException -> {
+                if (isBengali) "ইন্টারনেট সংযোগ পরীক্ষা করুন" else "Please check your internet connection"
+            }
+            is IOException -> {
+                if (isBengali) "ইন্টারনেট সংযোগ পরীক্ষা করুন" else "Please check your internet connection"
+            }
+            else -> {
+                e.message ?: if (isBengali) "অপ্রত্যাশিত ত্রুটি ঘটেছে" else "An unexpected error occurred"
+            }
         }
     }
 }

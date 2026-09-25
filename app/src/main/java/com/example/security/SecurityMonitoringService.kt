@@ -40,8 +40,6 @@ class SecurityMonitoringService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var accessibilityWatcher: AccessibilityTamperWatcher? = null
     private var appInstallWatcher: AppInstallWatcher? = null
-    private var periodicPackageCheckJob: Job? = null
-    private var lastKnownInstalledPackages: Set<String> = emptySet()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -98,7 +96,7 @@ class SecurityMonitoringService : Service() {
             }
         }
 
-        // 2. App Install Dynamic Receiver
+        // 2. App Install Dynamic Receiver (Broadcast-based only for newly installed apps)
         if (appInstallWatcher == null) {
             try {
                 val receiver = AppInstallWatcher()
@@ -108,7 +106,7 @@ class SecurityMonitoringService : Service() {
                     addDataScheme("package")
                 }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+                    registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
                 } else {
                     registerReceiver(receiver, filter)
                 }
@@ -116,45 +114,6 @@ class SecurityMonitoringService : Service() {
             } catch (e: Exception) {
                 Log.e(TAG, "Error registering AppInstallWatcher receiver: ${e.message}")
             }
-        }
-
-        // 3. Fallback Periodic Package Diff Checker (Every 5 minutes)
-        initPackageSnapshot()
-        periodicPackageCheckJob?.cancel()
-        periodicPackageCheckJob = serviceScope.launch(Dispatchers.IO) {
-            while (isActive) {
-                delay(5 * 60 * 1000L)
-                checkNewPackagesDiff()
-            }
-        }
-    }
-
-    private fun initPackageSnapshot() {
-        try {
-            val pm = packageManager
-            val installed = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            lastKnownInstalledPackages = installed.map { it.packageName }.toSet()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error capturing initial package snapshot", e)
-        }
-    }
-
-    private fun checkNewPackagesDiff() {
-        try {
-            val pm = packageManager
-            val currentInstalled = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                .map { it.packageName }.toSet()
-
-            val newlyAdded = currentInstalled - lastKnownInstalledPackages
-            for (pkg in newlyAdded) {
-                if (pkg != packageName) {
-                    Log.i(TAG, "Periodic check detected new package: $pkg")
-                    AppInstallWatcher.logAppInstallEvent(applicationContext, pkg, "PACKAGE_ADDED")
-                }
-            }
-            lastKnownInstalledPackages = currentInstalled
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking package diff", e)
         }
     }
 
@@ -207,9 +166,6 @@ class SecurityMonitoringService : Service() {
     }
 
     private fun stopMonitoringService() {
-        periodicPackageCheckJob?.cancel()
-        periodicPackageCheckJob = null
-
         accessibilityWatcher?.stopWatching()
         accessibilityWatcher = null
 

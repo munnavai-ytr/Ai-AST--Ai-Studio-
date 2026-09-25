@@ -1,20 +1,26 @@
 package com.example.data.gemini
 
+import android.util.Log
 import com.example.BuildConfig
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlinx.coroutines.delay
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.POST
 import retrofit2.http.Query
+import java.io.IOException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 interface GeminiApiService {
-    // Using recommended gemini-3.5-flash
-    @POST("v1beta/models/gemini-3.5-flash:generateContent")
+    // Using recommended gemini-2.5-flash
+    @POST("v1beta/models/gemini-2.5-flash:generateContent")
     suspend fun generateContent(
         @Query("key") apiKey: String,
         @Body request: GenerateContentRequest
@@ -22,6 +28,7 @@ interface GeminiApiService {
 }
 
 object GeminiApiClient {
+    private const val TAG = "GeminiApiClient"
     private const val BASE_URL = "https://generativelanguage.googleapis.com/"
 
     private val moshi: Moshi by lazy {
@@ -36,9 +43,9 @@ object GeminiApiClient {
         }
         OkHttpClient.Builder()
             .addInterceptor(logging)
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(10, TimeUnit.SECONDS)
             .build()
     }
 
@@ -91,18 +98,65 @@ object GeminiApiClient {
             )
         )
 
-        return try {
-            val response = service.generateContent(apiKey = apiKey, request = request)
-            val candidateText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-            if (!candidateText.isNullOrBlank()) {
-                Result.success(candidateText.trim())
-            } else if (response.error?.message != null) {
-                Result.failure(Exception(response.error.message))
-            } else {
-                Result.failure(Exception("Empty response received from Gemini"))
+        var attempts = 0
+        val maxAttempts = 2
+
+        while (attempts < maxAttempts) {
+            attempts++
+            try {
+                val response = service.generateContent(apiKey = apiKey, request = request)
+                val candidateText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                if (!candidateText.isNullOrBlank()) {
+                    return Result.success(candidateText.trim())
+                } else if (response.error?.message != null) {
+                    val errMsg = response.error.message
+                    Log.e(TAG, "Gemini response error: $errMsg")
+                    return Result.failure(Exception(errMsg))
+                } else {
+                    return Result.failure(Exception("Empty response received from Gemini"))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Gemini API call attempt $attempts failed", e)
+
+                val isRetryableHttp = e is HttpException && (e.code() in listOf(500, 502, 503))
+                if (attempts < maxAttempts && isRetryableHttp) {
+                    Log.w(TAG, "Retrying Gemini API call after 800ms due to HTTP ${ (e as HttpException).code() }...")
+                    delay(800)
+                    continue
+                }
+
+                val userFriendlyMessage = getUserFriendlyErrorMessage(e, isBengali)
+                return Result.failure(Exception(userFriendlyMessage))
             }
-        } catch (e: Exception) {
-            Result.failure(e)
+        }
+
+        return Result.failure(
+            Exception(
+                if (isBengali) "সার্ভার এই মুহূর্তে ব্যস্ত, একটু পর আবার চেষ্টা করছি..."
+                else "Server is busy, retrying..."
+            )
+        )
+    }
+
+    private fun getUserFriendlyErrorMessage(e: Exception, isBengali: Boolean): String {
+        return when (e) {
+            is HttpException -> {
+                when (e.code()) {
+                    503, 502, 500 -> if (isBengali) "সার্ভার এই মুহূর্তে ব্যস্ত, একটু পর আবার চেষ্টা করছি..." else "Server is busy, retrying..."
+                    429 -> if (isBengali) "অনুরোধের সীমা শেষ, কিছুক্ষণ অপেক্ষা করুন" else "Rate limit reached, please wait"
+                    401, 403 -> if (isBengali) "API key সঠিক নয়, দয়া করে সেটিংস চেক করুন" else "Invalid API key, please check settings"
+                    else -> if (isBengali) "অনুরোধটি সম্পন্ন করা যায়নি (কোড: ${e.code()})" else "Request failed (code: ${e.code()})"
+                }
+            }
+            is SocketTimeoutException, is UnknownHostException -> {
+                if (isBengali) "ইন্টারনেট সংযোগ পরীক্ষা করুন" else "Please check your internet connection"
+            }
+            is IOException -> {
+                if (isBengali) "ইন্টারনেট সংযোগ পরীক্ষা করুন" else "Please check your internet connection"
+            }
+            else -> {
+                e.message ?: if (isBengali) "অপ্রত্যাশিত ত্রুটি ঘটেছে" else "An unexpected error occurred"
+            }
         }
     }
 }
