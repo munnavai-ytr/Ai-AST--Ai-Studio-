@@ -48,7 +48,11 @@ data class SpeechUiState(
     // Accessibility Service & Action State
     val isAccessibilityConnected: Boolean = false,
     val lastActionCommand: com.example.service.AssistantActionCommand? = null,
-    val lastActionResult: com.example.service.AssistantActionResult? = null
+    val lastActionResult: com.example.service.AssistantActionResult? = null,
+
+    // Security Monitoring State
+    val isSecurityMonitoringActive: Boolean = false,
+    val securityStatusMessage: String = "Security monitoring inactive"
 )
 
 class VoiceToTextViewModel(application: Application) : AndroidViewModel(application) {
@@ -151,6 +155,23 @@ class VoiceToTextViewModel(application: Application) : AndroidViewModel(applicat
                 }
             }
         }
+
+        // Observe Security Monitoring Service state
+        viewModelScope.launch {
+            com.example.security.SecurityMonitoringService.isServiceRunning.collect { running ->
+                _uiState.update { it.copy(isSecurityMonitoringActive = running) }
+            }
+        }
+        viewModelScope.launch {
+            com.example.security.SecurityMonitoringService.serviceStatusMessage.collect { status ->
+                _uiState.update { it.copy(securityStatusMessage = status) }
+            }
+        }
+
+        // Auto-start security monitoring if was previously enabled
+        if (com.example.devicesecurity.DeviceSecurityPreferences.isSecurityMonitoringEnabled(context)) {
+            com.example.security.SecurityMonitoringService.start(context)
+        }
     }
 
     fun toggleBackgroundService() {
@@ -158,6 +179,14 @@ class VoiceToTextViewModel(application: Application) : AndroidViewModel(applicat
             com.example.service.WakeWordService.stop(context)
         } else {
             com.example.service.WakeWordService.start(context)
+        }
+    }
+
+    fun toggleSecurityMonitoring() {
+        if (_uiState.value.isSecurityMonitoringActive) {
+            com.example.security.SecurityMonitoringService.stop(context)
+        } else {
+            com.example.security.SecurityMonitoringService.start(context)
         }
     }
 

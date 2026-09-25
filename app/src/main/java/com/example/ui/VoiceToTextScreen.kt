@@ -572,6 +572,120 @@ fun VoiceToTextScreen(
                 }
             }
 
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // SECURITY MONITORING CARD
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(
+                        1.dp,
+                        if (uiState.isSecurityMonitoringActive) Brush.linearGradient(listOf(NeonCyan, ElectricViolet))
+                        else Brush.linearGradient(listOf(DarkBorder, DarkBorder)),
+                        RoundedCornerShape(16.dp)
+                    ),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = DarkCardBg)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (uiState.isSecurityMonitoringActive) NeonCyan.copy(alpha = 0.2f)
+                                        else DarkSurfaceVariant
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Security,
+                                    contentDescription = null,
+                                    tint = if (uiState.isSecurityMonitoringActive) NeonCyan else TextTertiary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            Column {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "Security Monitoring",
+                                        color = TextPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    if (uiState.isSecurityMonitoringActive) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(SuccessGreen.copy(alpha = 0.2f))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = "ACTIVE",
+                                                color = SuccessGreen,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                                Text(
+                                    text = if (uiState.isSecurityMonitoringActive) {
+                                        "অ্যাক্সেসিবিলিটি ট্যাম্পার ও অ্যাপ ইন্সটল পর্যবেক্ষণ সক্রিয়"
+                                    } else {
+                                        "সন্দেহজনক কার্যকলাপ পর্যবেক্ষণ বন্ধ রয়েছে"
+                                    },
+                                    color = if (uiState.isSecurityMonitoringActive) SuccessGreen else TextTertiary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        Switch(
+                            checked = uiState.isSecurityMonitoringActive,
+                            onCheckedChange = { viewModel.toggleSecurityMonitoring() },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkBackground,
+                                checkedTrackColor = NeonCyan,
+                                uncheckedThumbColor = TextTertiary,
+                                uncheckedTrackColor = DarkSurfaceVariant
+                            ),
+                            modifier = Modifier.testTag("security_monitoring_switch")
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = if (uiState.isSecurityMonitoringActive) {
+                            "স্বচ্ছতা নোটিফিকেশন সহ ব্যাকগ্রাউন্ডে চলছে (Firestore এ ইভেন্ট লগ হবে)"
+                        } else {
+                            "মালিকের সুরক্ষার জন্য সক্রিয় করুন"
+                        },
+                        color = TextTertiary,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(14.dp))
 
             // CENTER SECTION: Centerpiece Glowing Microphone Button
