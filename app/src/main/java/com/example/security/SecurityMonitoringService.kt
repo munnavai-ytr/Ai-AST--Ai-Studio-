@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -67,17 +68,25 @@ class SecurityMonitoringService : Service() {
         val notification = createNotification("Monitoring accessibility integrity & app installations")
 
         try {
-            ServiceCompat.startForeground(
-                this,
-                NOTIFICATION_ID,
-                notification,
-                0
-            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                try {
+                    ServiceCompat.startForeground(
+                        this,
+                        NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    )
+                } catch (_: SecurityException) {
+                    startForeground(NOTIFICATION_ID, notification)
+                }
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
             _isServiceRunning.value = true
             _serviceStatusMessage.value = "Security monitoring active"
             DeviceSecurityPreferences.setSecurityMonitoringEnabled(this, true)
         } catch (e: Exception) {
-            Log.e(TAG, "Error starting security foreground service: ${e.message}")
+            Log.e(TAG, "Error starting security foreground service: ${e.message}", e)
         }
     }
 
