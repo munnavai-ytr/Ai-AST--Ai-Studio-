@@ -1,3 +1,4 @@
+
 name: Build Android Debug APK
 
 on:
@@ -37,8 +38,10 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-      - name: Create .env file with Gemini API Key
-        run: echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
+      - name: Create .env file with API Keys
+        run: |
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
+          echo "GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}" >> .env
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace --info
