@@ -24,17 +24,20 @@ class OwnerCommandReceiverService : FirebaseMessagingService() {
         // Sync FCM token to Firestore device_status document
         try {
             val deviceId = DeviceSecurityPreferences.getDeviceId(applicationContext)
+            val docId = DeviceSecurityPreferences.getSecurityDocumentId(applicationContext)
+            val ownerUid = DeviceSecurityPreferences.getOwnerUid()
             val data = hashMapOf(
                 "deviceId" to deviceId,
+                "ownerUid" to (ownerUid ?: ""),
                 "fcmToken" to token,
                 "tokenUpdatedAt" to System.currentTimeMillis()
             )
             FirebaseFirestore.getInstance()
                 .collection("device_status")
-                .document(deviceId)
+                .document(docId)
                 .set(data, SetOptions.merge())
                 .addOnSuccessListener {
-                    Log.d(TAG, "FCM Token registered in Firestore for device $deviceId")
+                    Log.d(TAG, "FCM Token registered in Firestore for doc $docId")
                 }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to sync token to Firestore", e)

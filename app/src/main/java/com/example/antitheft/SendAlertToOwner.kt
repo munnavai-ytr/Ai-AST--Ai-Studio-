@@ -3,6 +3,7 @@ package com.example.antitheft
 import android.content.Context
 import android.util.Log
 import com.example.devicesecurity.DeviceSecurityPreferences
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import java.text.SimpleDateFormat
@@ -20,6 +21,7 @@ object SendAlertToOwner {
 
     /**
      * Logs a security alert event to Firestore so the owner can review suspicious events.
+     * Skips writing if no authenticated owner is signed in via Firebase Auth.
      */
     fun sendSecurityAlert(
         context: Context,
@@ -28,13 +30,23 @@ object SendAlertToOwner {
         details: Map<String, Any> = emptyMap()
     ) {
         try {
+            val currentUser = FirebaseAuth.getInstance().currentUser
+            if (currentUser == null) {
+                Log.d(TAG, "No authenticated owner signed in. Skipping Firestore security alert write.")
+                return
+            }
+
             val deviceId = DeviceSecurityPreferences.getDeviceId(context)
+            val docId = DeviceSecurityPreferences.getSecurityDocumentId(context)
+            val ownerUid = currentUser.uid
             val now = System.currentTimeMillis()
             val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
             val formattedDate = dateFormat.format(Date(now))
 
             val alertData = hashMapOf<String, Any>(
                 "deviceId" to deviceId,
+                "ownerUid" to ownerUid,
+                "ownerEmail" to (currentUser.email ?: ""),
                 "eventType" to eventType,
                 "message" to message,
                 "timestamp" to now,
@@ -54,16 +66,18 @@ object SendAlertToOwner {
                     Log.e(TAG, "Failed to send security alert to Firestore", e)
                 }
 
-            // 2. Update lastSecurityAlert on device_status document
+            // 2. Update lastSecurityAlert on device_status document using owner document ID
             val statusUpdate = hashMapOf<String, Any>(
                 "deviceId" to deviceId,
+                "ownerUid" to ownerUid,
+                "ownerEmail" to (currentUser.email ?: ""),
                 "lastSecurityAlert" to eventType,
                 "lastAlertMessage" to message,
                 "lastAlertTimestamp" to now,
                 "lastAlertTimeReadable" to formattedDate
             )
             firestore.collection(COLLECTION_STATUS)
-                .document(deviceId)
+                .document(docId)
                 .set(statusUpdate, SetOptions.merge())
                 .addOnSuccessListener {
                     Log.d(TAG, "Updated last alert on device_status")

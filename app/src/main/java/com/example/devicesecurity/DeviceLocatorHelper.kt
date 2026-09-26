@@ -175,6 +175,8 @@ object DeviceLocatorHelper {
     private fun saveLocationToFirestore(context: Context, location: Location) {
         try {
             val deviceId = DeviceSecurityPreferences.getDeviceId(context)
+            val docId = DeviceSecurityPreferences.getSecurityDocumentId(context)
+            val ownerUid = DeviceSecurityPreferences.getOwnerUid()
             val now = System.currentTimeMillis()
             val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
             val formattedDate = dateFormat.format(Date(now))
@@ -182,6 +184,7 @@ object DeviceLocatorHelper {
 
             val locationData = hashMapOf(
                 "deviceId" to deviceId,
+                "ownerUid" to (ownerUid ?: ""),
                 "latitude" to location.latitude,
                 "longitude" to location.longitude,
                 "accuracy" to location.accuracy,
@@ -199,10 +202,10 @@ object DeviceLocatorHelper {
 
             FirebaseFirestore.getInstance()
                 .collection("device_status")
-                .document(deviceId)
+                .document(docId)
                 .set(locationData, SetOptions.merge())
                 .addOnSuccessListener {
-                    Log.d(TAG, "Location successfully updated in Firestore for device: $deviceId")
+                    Log.d(TAG, "Location successfully updated in Firestore for doc: $docId")
                 }
                 .addOnFailureListener { e ->
                     Log.e(TAG, "Failed to write location to Firestore", e)
@@ -223,6 +226,8 @@ object DeviceLocatorHelper {
     ) {
         try {
             val deviceId = DeviceSecurityPreferences.getDeviceId(context)
+            val docId = DeviceSecurityPreferences.getSecurityDocumentId(context)
+            val ownerUid = DeviceSecurityPreferences.getOwnerUid()
             val now = System.currentTimeMillis()
             val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
             val formattedDate = dateFormat.format(Date(now))
@@ -230,6 +235,7 @@ object DeviceLocatorHelper {
 
             val statusData = hashMapOf<String, Any>(
                 "deviceId" to deviceId,
+                "ownerUid" to (ownerUid ?: ""),
                 "status" to status,
                 "lastAction" to lastAction,
                 "timestamp" to now,
@@ -241,7 +247,7 @@ object DeviceLocatorHelper {
 
             FirebaseFirestore.getInstance()
                 .collection("device_status")
-                .document(deviceId)
+                .document(docId)
                 .set(statusData, SetOptions.merge())
                 .addOnSuccessListener {
                     Log.d(TAG, "Status updated in Firestore: $status")

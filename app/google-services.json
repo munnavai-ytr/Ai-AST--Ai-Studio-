@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "310586173790",
+    "project_id": "hey-mimi",
+    "storage_bucket": "hey-mimi.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:310586173790:android:9430432c29831d79e047cf",
+        "android_client_info": {
+          "package_name": "com.aistudio.voicetotext.rkzn"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC0vNP4oKFHmGLfRssExc7kLcRCin5a370"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

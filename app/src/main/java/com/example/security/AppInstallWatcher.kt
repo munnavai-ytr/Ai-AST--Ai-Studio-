@@ -14,6 +14,7 @@ import com.example.MainActivity
 import com.example.R
 import com.example.antitheft.SendAlertToOwner
 import com.example.devicesecurity.DeviceSecurityPreferences
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import java.text.SimpleDateFormat
@@ -102,13 +103,22 @@ class AppInstallWatcher : BroadcastReceiver() {
                 // Step 3: Show visible notification to the user for full transparency
                 showInstallNotification(context, appName, packageName)
 
+                val currentUser = FirebaseAuth.getInstance().currentUser
+                if (currentUser == null) {
+                    Log.d(TAG, "No authenticated owner signed in. Skipping Firestore app install log.")
+                    return
+                }
+
                 val now = System.currentTimeMillis()
                 val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
                 val formattedDate = dateFormat.format(Date(now))
                 val deviceId = DeviceSecurityPreferences.getDeviceId(context)
+                val docId = DeviceSecurityPreferences.getSecurityDocumentId(context)
 
                 val eventData = hashMapOf<String, Any>(
                     "deviceId" to deviceId,
+                    "ownerUid" to currentUser.uid,
+                    "ownerEmail" to (currentUser.email ?: ""),
                     "packageName" to packageName,
                     "appName" to appName,
                     "actionType" to actionType,
@@ -119,7 +129,7 @@ class AppInstallWatcher : BroadcastReceiver() {
 
                 FirebaseFirestore.getInstance()
                     .collection(COLLECTION_INSTALLS)
-                    .document("${deviceId}_${packageName}_$now")
+                    .document("${docId}_${packageName}_$now")
                     .set(eventData, SetOptions.merge())
                     .addOnSuccessListener {
                         Log.d(TAG, "Successfully logged app install event for $packageName ($appName)")

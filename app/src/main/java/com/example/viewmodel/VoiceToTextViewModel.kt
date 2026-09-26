@@ -52,7 +52,12 @@ data class SpeechUiState(
 
     // Security Monitoring State
     val isSecurityMonitoringActive: Boolean = false,
-    val securityStatusMessage: String = "Security monitoring inactive"
+    val securityStatusMessage: String = "Security monitoring inactive",
+
+    // Owner Authentication State
+    val currentUser: com.google.firebase.auth.FirebaseUser? = null,
+    val isSigningIn: Boolean = false,
+    val authStatusMessage: String? = null
 )
 
 class VoiceToTextViewModel(application: Application) : AndroidViewModel(application) {
@@ -168,6 +173,13 @@ class VoiceToTextViewModel(application: Application) : AndroidViewModel(applicat
             }
         }
 
+        // Observe Owner Firebase Authentication State
+        viewModelScope.launch {
+            com.example.auth.AuthManager.currentUser.collect { user ->
+                _uiState.update { it.copy(currentUser = user) }
+            }
+        }
+
         // Auto-start security monitoring if was previously enabled
         if (com.example.devicesecurity.DeviceSecurityPreferences.isSecurityMonitoringEnabled(context)) {
             com.example.security.SecurityMonitoringService.start(context)
@@ -187,6 +199,40 @@ class VoiceToTextViewModel(application: Application) : AndroidViewModel(applicat
             com.example.security.SecurityMonitoringService.stop(context)
         } else {
             com.example.security.SecurityMonitoringService.start(context)
+        }
+    }
+
+    fun signInWithGoogle(activityContext: Context) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSigningIn = true, errorMessage = null) }
+            val result = com.example.auth.AuthManager.signInWithGoogle(activityContext)
+            _uiState.update { state ->
+                if (result.isSuccess) {
+                    val user = result.getOrNull()
+                    state.copy(
+                        isSigningIn = false,
+                        currentUser = user,
+                        authStatusMessage = if (state.selectedLanguage == SpeechLanguage.BENGALI) "মালিক সফলভাবে লগইন করেছেন!" else "Owner signed in: ${user?.email}"
+                    )
+                } else {
+                    state.copy(
+                        isSigningIn = false,
+                        errorMessage = result.exceptionOrNull()?.message ?: "Google Sign-In failed"
+                    )
+                }
+            }
+        }
+    }
+
+    fun signOut(activityContext: Context) {
+        viewModelScope.launch {
+            com.example.auth.AuthManager.signOut(activityContext)
+            _uiState.update {
+                it.copy(
+                    currentUser = null,
+                    authStatusMessage = if (it.selectedLanguage == SpeechLanguage.BENGALI) "লগআউট সম্পন্ন হয়েছে" else "Signed out successfully"
+                )
+            }
         }
     }
 

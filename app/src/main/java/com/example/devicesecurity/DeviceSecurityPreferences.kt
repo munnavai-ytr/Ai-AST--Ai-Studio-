@@ -3,6 +3,7 @@ package com.example.devicesecurity
 import android.content.Context
 import android.content.SharedPreferences
 import android.provider.Settings
+import com.google.firebase.auth.FirebaseAuth
 import java.util.UUID
 
 /**
@@ -52,6 +53,30 @@ object DeviceSecurityPreferences {
 
     fun setFcmToken(context: Context, token: String) {
         getPrefs(context).edit().putString(KEY_FCM_TOKEN, token).apply()
+    }
+
+    /**
+     * Returns the Firebase UID of the currently signed-in owner, if any.
+     */
+    fun getOwnerUid(): String? {
+        return try {
+            FirebaseAuth.getInstance().currentUser?.uid
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Returns the unique document ID or path for Firestore device security records,
+     * prioritizing the authenticated owner's UID so each owner's data is isolated.
+     */
+    fun getSecurityDocumentId(context: Context): String {
+        val uid = getOwnerUid()
+        return if (!uid.isNullOrBlank()) {
+            "${uid}_${getDeviceId(context)}"
+        } else {
+            getDeviceId(context)
+        }
     }
 
     fun getDeviceId(context: Context): String {
